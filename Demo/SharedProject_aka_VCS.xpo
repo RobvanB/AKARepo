@@ -1,0 +1,2053 @@
+﻿Exportfile for AOT version 1.0 or later
+XXX
+Formatversion: 1
+
+***Element: CLS
+
+; Microsoft Dynamics AX Class: akaUtil unloaded
+; --------------------------------------------------------------------------------
+  CLSVERSION 1
+  
+  CLASS #akaUtil
+    PROPERTIES
+      Name                #akaUtil
+      Origin              #{21B0AE53-BAC5-40B9-AC99-22972D4F1E1F}
+    ENDPROPERTIES
+    
+    METHODS
+      SOURCE #classDeclaration
+        #class akaUtil
+        #{
+        #    // 01-Aug-2013 - RvB - voorTech@gmail.com
+        #}
+      ENDSOURCE
+      SOURCE #saveCommitMsg
+        #public static FileName saveCommitMsg(Filename _xpoFileName, str _msg = "")
+        #{
+        #    Filename            commitFile  ;
+        #    int                 xpoLen      ;
+        #    AsciiIo             io          ;
+        #    FileIoPermission    perm        ;
+        #    SysConfig           sysConfig   ;
+        #    Name                custName    ;
+        #
+        #    //Parse the path and filename
+        #    xpoLen = strLen(_xpoFileName);
+        #    commitFile = subStr(_xpoFileName, 0, xpoLen - 4) ; //Cut off '.xpo'
+        #    commitFile = commitFile + ".commit" ;
+        #
+        #    //Get the customer name from the license info
+        #    select sysConfig where sysConfig.id == 0 && sysConfig.configType == 0 ;
+        #    if (sysConfig.RecId && sysConfig.value != "")
+        #    {
+        #        custName = sysConfig.value;
+        #    }else
+        #    {
+        #        warning("Can not retrieve customer name from License - upload will fail.");
+        #    }
+        #
+        #
+        #    try
+        #    {
+        #        perm = new FileIoPermission(commitFile,"W");
+        #
+        #        perm.assert();
+        #
+        #        io = new AsciiIo(commitFile, 'W');
+        #        if (io)
+        #        {
+        #            //User ID and Date stamp
+        #            io.write(strFmt("%1 - %2", curUserId(), date2str(systemDateGet(), 213,2,4,3,4,4)));
+        #            //Customer from License Info
+        #            io.write(custName);
+        #            //Commit message from export
+        #            io.write(_msg);
+        #        }
+        #        return commitFile ;
+        #    }
+        #    catch
+        #    {
+        #        warning("Error writing commit file.");
+        #    }
+        #    return "";
+        #}
+      ENDSOURCE
+      SOURCE #SendEmail
+        #public static void SendEmail(str _sourceFile, str _commitFileName)
+        #{
+        #    // 27-Jul-2013 - RvB - voorTech@gmail.com
+        #    System.Net.Mail.MailMessage             mailMessage                 ;
+        #    System.Net.Mail.Attachment              attachment                  ;
+        #    System.Net.Mail.AttachmentCollection    attachementCollection       ;
+        #    System.Net.Mail.SmtpClient              mailClient                  ;
+        #    System.Net.Mail.MailAddress             mailFrom                    ;
+        #    System.Net.Mail.MailAddress             mailTo                      ;
+        #    System.Net.NetworkCredential            networkCredential           ;
+        #
+        #    SysEmailParameters                      sysEmailParameters          ;
+        #    SMTPUserName                            smtpUser                    ;
+        #  //cryptoblob                              password                    ;
+        #    akaMailPasswd                           password                    ;
+        #    SMTPPortNumber                          portNumber                  ;
+        #    SMTPServerIpAddress                     localMachine                ;
+        #    CLRObject                               netException                ;
+        #    AOSId                                   AOSId                       ;
+        #    AOSInstanceId                           AOSInstanceId               ;
+        #
+        #    str                                     userMailAddress             ;
+        #    str                                     userMailName                ;
+        #    str                                     receiverMailAddress         ;
+        #    str                                     mailBody                    ;
+        #    str                                     smtpServer                  ;
+        #    fileNameOpen                            fileNameForEmail            ;
+        #    fileNameOpen                            sourceFileName              ;
+        #    str                                     tmpName                     ;
+        #    FileIOPermission                        perm                        ;
+        #    userinfo                                userInfo                    ;
+        #    InteropPermission                       permission                  ;
+        #    Str                                     tmpStr                      ;
+        #    akaParms                                akaParms                    ;
+        #    ;
+        #
+        #    sourceFileName  = _sourceFile       ; //Format "C:\\DEV\\TestFile.txt"
+        #    akaParms        = akaParms::find()  ;
+        #
+        #    fileNameForEmail    = _sourceFile ;
+        #    perm                = new FileIOPermission(fileNameforEmail,'w')                ;
+        #
+        #    if(!perm)
+        #    {
+        #        throw error(StrFmt("Cannot access attachment %1.", fileNameForEmail));
+        #    }
+        #    try
+        #    {
+        #        perm.assert();
+        #    }
+        #    catch
+        #    {
+        #        throw error(StrFmt("Cannot gain access to Temp location %1.", fileNameForEmail));
+        #    }
+        #
+        #    /*
+        #    try
+        #    {
+        #        //move attachment file to Temp folder
+        #        winapi::moveFile(sourceFileName , fileNameforEmail);
+        #    }
+        #    catch(Exception::CLRError)
+        #    {
+        #        throw error(strFmt("Error moving file: %1", AifUtil::getClrErrorMessage()));
+        #    }
+        #    */
+        #    CodeAccessPermission::revertAssert();
+        #
+        #    userMailAddress         = SysUserInfo::find().Email                                 ; // find current users email address setup up in user options
+        #    smtpServer              = akaParms.MailServer                                       ;
+        #    portNumber              = 25                                                        ;
+        #    smtpUser                = akaParms.MailUser                                         ;
+        #    password                = akaParms.MailPasswd                                       ;
+        #    receiverMailAddress     = akaParms.vcsEmail                                         ;
+        #
+        #    //if (userMailAddress == "")
+        #    //{
+        #        //throw Error("Send mail: Email address not specified in User Options.");
+        #    //}
+        #    userMailAddress = userMailAddress == "" ? "AKAVersionControl@Akaes.com" : userMailAddress ;
+        #    if (smtpServer == "")
+        #    {
+        #        throw Error("Send mail: SMTP server not specified in AX Email Parameters.");
+        #    }
+        #    if (portNumber == 0 )
+        #    {
+        #        throw Error("Send mail: SMTP portNumber not specified in AX Email Parameters.");
+        #    }
+        #    if (smtpUser == "")
+        #    {
+        #        throw Error("Send mail: SMTP user name not specified in AX Email Parameters.");
+        #    }
+        #
+        #    select firstonly name from userInfo where userInfo.id == SysuserInfo::find().Id             ;   // to find the user name
+        #    userMailName            = userInfo.name == "" ? "AKA Version Control" : userInfo.name       ;
+        #    mailFrom                = new System.Net.Mail.MailAddress(userMailAddress,userInfo.name)    ;
+        #    mailTo                  = new System.Net.Mail.MailAddress(receiverMailAddress,"")           ;
+        #    mailBody                = "XPO"                                                             ;   // TODO: fine tune. Dev project name ?
+        #
+        #    mailMessage             = new System.Net.Mail.MailMessage(mailFrom,mailTo)                  ;
+        #    mailmessage.set_Subject("AKA CODE");
+        #    mailmessage.set_Body(mailBody);
+        #
+        #    permission = new InteropPermission(InteropKind::ClrInterop);
+        #    permission.assert();
+        #
+        #    attachementCollection   = mailMessage.get_Attachments();
+        #    attachment              = new System.Net.Mail.Attachment(fileNameforEmail);
+        #    attachementCollection.Add(attachment);
+        #
+        #    if (_commitFileName != "")
+        #    {
+        #        attachment              = new System.Net.Mail.Attachment(_commitFileName);
+        #        attachementCollection.Add(attachment);
+        #    }
+        #
+        #    mailClient              = new System.Net.Mail.SmtpClient(smtpServer, portNumber);
+        #  //tmpStr                  = Global::cryptoblob2str(WinAPIServer::cryptUnProtectData(password)) ;
+        #    tmpStr                  = password ;                                                            // TODO: Encrypt
+        #    networkCredential       = new System.Net.NetworkCredential(smtpUser, tmpStr) ;
+        #    mailClient.set_UseDefaultCredentials(False);
+        #    mailClient.set_Credentials(networkCredential);
+        #  //mailClient.set_Host(smtpServer);
+        #
+        #    try
+        #    {
+        #        mailClient.Send(mailmessage);
+        #    }
+        #    catch(Exception::CLRError)
+        #    {
+        #        Warning("CLRError Problem sending email.");
+        #        netException = CLRInterop::getLastException();
+        #        info(netException.ToString());
+        #    }
+        #    catch(Exception::CodeAccessSecurity)
+        #    {
+        #        Warning("CodeAccessSecurity Problem sending email.");
+        #    }
+        #    catch(Exception::Error)
+        #    {
+        #        Warning("Problem sending email.");
+        #    }
+        #
+        #    mailmessage.Dispose();
+        #    attachment.Dispose();
+        #    winApi::deleteFile(fileNameforEmail); // delete temp file
+        #    CodeAccessPermission::revertAssert();
+        #
+        #    info("Email sent.");
+        #}
+        #
+      ENDSOURCE
+    ENDMETHODS
+  ENDCLASS
+
+***Element: FRM
+
+; Microsoft Dynamics AX Forms unloaded
+; --------------------------------------------------------------------------------
+FRMVERSION 12
+
+FORM #SysExportDialog
+  PROPERTIES
+    Name                #SysExportDialog
+    Origin              #{D9A0A8BF-A06B-4734-A5F3-EAD9165E2FD6}
+  ENDPROPERTIES
+  
+  METHODS
+    SOURCE #classDeclaration
+      #class FormRun extends ObjectRun
+      #{
+      #    #ResAppl
+      #    #AotExport
+      #    #define.identifierName('ImpExpLastFiles')
+      #    int                     exportFlag;
+      #    container               lastFiles;
+      #    Set                     languageSet;
+      #    ImageListAppl_checkbox  imageListAppl_checkbox;
+      #    Map                     languageMap;
+      #
+      #    #Define.CurrentVersion(1)
+      #    #Define.CurrentList(lastFiles)
+      #
+      #    #Define.tempFiles(5)
+      #
+      #    #define.FOCUS_CHECKBOX(64)
+      #    #define.FOCUS_FIELD(4)
+      #
+      #    #FormListControl
+      #}
+    ENDSOURCE
+    SOURCE #akaSendVCS
+      #void akaSendVCS()
+      #{
+      #    // 03-Aug-2013 - RvB - voorTech@gmail.com
+      #    Filename    commitFile;
+      #
+      #    commitFile = akaUtil::saveCommitMsg(this.getFileName(), akaCommitMsg.valueStr());
+      #    akaUtil::SendEmail(this.getFileName(), commitFile);
+      #}
+    ENDSOURCE
+    SOURCE #buildLanguageSet
+      #private void buildLanguageSet()
+      #{
+      #    TreeItemIdx     treeItemIdx;
+      #    FormTreeItem    formTreeItem = languageTree.getItem(languageTree.getRoot());
+      #    ;
+      #    languageSet = new Set(Types::String);
+      #
+      #    if (formTreeItem &&
+      #        languageTree.getChild(formTreeItem.idx()) &&
+      #        formTreeItem.stateImage() != imageListAppl_checkbox.image(#imageCheckNone))
+      #    {
+      #        treeItemIdx = languageTree.getChild(formTreeItem.idx());
+      #
+      #        while (treeItemIdx)
+      #        {
+      #            formTreeItem = languageTree.getItem(treeItemIdx);
+      #
+      #            if (formTreeItem &&
+      #                formTreeItem.stateImage() == imageListAppl_checkbox.image(#imageCheckAll))
+      #            {
+      #                languageSet.add(formTreeItem.data());
+      #            }
+      #            treeItemIdx = languageTree.getNextSibling(treeItemIdx);
+      #        }
+      #    }
+      #}
+    ENDSOURCE
+    SOURCE #closeOk
+      #public void closeOk()
+      #{
+      #    ;
+      #    element.updateBox(fileName.getEditText(), false);
+      #    xSysLastValue::saveLast(element);
+      #
+      #    super();
+      #    if (email.value())
+      #    {
+      #        infolog.globalCache().set(formstr(SysExportDialog), 0, this);
+      #        element.setTimeOut(identifierstr(sendAsEmail), 100, true);
+      #    }
+      #
+      #    // 03-Aug-2013 - RvB - voorTech@gmail.com -->
+      #    if (akaVCS.optionValue()== 1)
+      #    {
+      #        infolog.globalCache().set(formstr(SysExportDialog), 0, this);
+      #        element.setTimeOut(identifierstr(akaSendVCS), 100, true);
+      #    }
+      #    // 03-Aug-2013 - RvB - voorTech@gmail.com <--
+      #}
+    ENDSOURCE
+    SOURCE #export
+      #public void export()
+      #{
+      #    Filename        file;
+      #    Filename        path;
+      #    Filename        name;
+      #    Filename        ext;
+      #    ;
+      #
+      #    [path, name, ext] = fileNameSplit(fileName.getEditText());
+      #
+      #    file = path + name + ext;
+      #
+      #    exportFlag = #export;
+      #
+      #    if (!path)
+      #    {
+      #        path = this.fileNameLookupInitialPath();
+      #    }
+      #    else
+      #    {
+      #        if (!WinAPI::pathExists(path))
+      #        {
+      #            Box::info(strfmt("@SYS55831", path));
+      #            exportFlag = #noExport;
+      #        }
+      #    }
+      #
+      #    if (WinAPI::fileExists(file))
+      #    {
+      #        if (Box::yesNo(strfmt("@SYS18625", file) + ' ' + "@SYS54006",DialogButton::Yes) == DialogButton::No)
+      #        {
+      #            exportFlag = #noExport;
+      #        }
+      #    }
+      #
+      #    element.updateBox(file);
+      #
+      #    if (exportFlag)
+      #    {
+      #        this.buildLanguageSet();
+      #
+      #        if (labelGrp.enableChilds() &&
+      #            languageSet.elements())
+      #        {
+      #            exportFlag += #expLables;
+      #        }
+      #
+      #        if (projectDefinitonOnlyBox.enabled() &&
+      #            projectDefinitonOnlyBox.value())
+      #        {
+      #            exportFlag += #expProjectOnly;
+      #        }
+      #
+      #        this.updateBox(fileName.getEditText(), false);
+      #        xSysLastValue::saveLast(element);
+      #        this.close();
+      #    }
+      #}
+    ENDSOURCE
+    SOURCE #fileNameLookUpFileName
+      #str fileNameLookUpFileName()
+      #{
+      #    Filename    path;
+      #    Filename    name;
+      #    Filename    ext;
+      #    ;
+      #    [path, name, ext] = fileNameSplit(fileName.getEditText());
+      #
+      #    if (name)
+      #    {
+      #        return path + name + ext;
+      #    }
+      #
+      #    return '';
+      #}
+    ENDSOURCE
+    SOURCE #fileNameLookupFilter
+      #container fileNameLookupFilter()
+      #{
+      #    #file
+      #    return [WinAPI::fileType(#xpo), #allfilesName+#xpo, #allFilesType, #allFiles];
+      #}
+    ENDSOURCE
+    SOURCE #fileNameLookupInitialPath
+      #str fileNameLookupInitialPath()
+      #{
+      #    #WinApi
+      #    Filename                path;
+      #    Filename                name;
+      #    Filename                ext;
+      #    ;
+      #    [path, name, ext] = fileNameSplit(fileName.getEditText());
+      #
+      #    if (!path)
+      #    {
+      #        if (conlen(lastFiles))
+      #        {
+      #            [path, name, ext] = fileNameSplit(conpeek(lastFiles,1));
+      #        }
+      #
+      #        if (!path)
+      #        {
+      #            path = WinAPI::getFolderPath(#CSIDL_Personal) + '\\';
+      #        }
+      #    }
+      #    return path;
+      #
+      #}
+    ENDSOURCE
+    SOURCE #fileNameLookupTitle
+      #str fileNameLookupTitle()
+      #{
+      #    return '';
+      #}
+    ENDSOURCE
+    SOURCE #getExportFlag
+      #int getExportFlag()
+      #{
+      #    return exportFlag;
+      #}
+    ENDSOURCE
+    SOURCE #getFileName
+      #final str getFileName()
+      #{
+      #    return filename.getText(filename.selection());
+      #}
+    ENDSOURCE
+    SOURCE #getLabelLanguages
+      #public Set getLabelLanguages()
+      #{
+      #    return languageSet;
+      #}
+    ENDSOURCE
+    SOURCE #getutilLayer
+      #final int getutilLayer()
+      #{
+      #    ;
+      #    if (layerGrp.enableChilds())
+      #    {
+      #        return 1 << layer.selection();
+      #    }
+      #
+      #    return 0;
+      #
+      #
+      #}
+    ENDSOURCE
+    SOURCE #init
+      #void init()
+      #{
+      #    super();
+      #
+      #    imageListAppl_checkbox  = new ImageListAppl_checkbox();
+      #    exportFlag              = #noExport;
+      #    languageMap             = new Map(Types::String, Types::Enum);
+      #
+      #    languageTree.setStateImagelist(imageListAppl_checkbox.imageList());
+      #}
+    ENDSOURCE
+    SOURCE #initParmDefault
+      #/*MAN
+      #This method is called when no SysLastValue record can be found in xSysLastValue.GetLast()
+      #*/
+      #void initParmDefault()
+      #{
+      #
+      #}
+    ENDSOURCE
+    SOURCE #lastValueDataAreaId
+      #dataAreaId lastValueDataAreaId()
+      #{
+      #    return curext();
+      #}
+    ENDSOURCE
+    SOURCE #lastValueDesignName
+      #private identifierName lastValueDesignName()
+      #{
+      #    return '';
+      #}
+    ENDSOURCE
+    SOURCE #lastValueElementName
+      #private identifierName lastValueElementName()
+      #{
+      #    return #identifierName();
+      #}
+    ENDSOURCE
+    SOURCE #lastValueType
+      #private UtilElementType lastValueType()
+      #{
+      #    return UtilElementType::Form;
+      #}
+    ENDSOURCE
+    SOURCE #lastValueUserId
+      #private userId lastValueUserId()
+      #{
+      #    return curuserid();
+      #}
+    ENDSOURCE
+    SOURCE #mouseClick
+      #void mouseClick(FormTreeItem _formTreeItem)
+      #{
+      #    ;
+      #    if (_formTreeItem)
+      #    {
+      #        SysFormTreeControl::changeStateImage_CheckBox(languageTree, _formTreeItem.idx());
+      #    }
+      #}
+    ENDSOURCE
+    SOURCE #pack
+      #public container pack()
+      #{
+      #
+      #    return [#CurrentVersion,#CurrentList];
+      #
+      #}
+    ENDSOURCE
+    SOURCE #run
+      #public void run()
+      #{
+      #    #file
+      #    TreeNode            treeNode;
+      #    LastAotSelection    lastAotSelection = new LastAotSelection();
+      #    FilePath            filePath;
+      #    str                 preFix;  // first part of the file name to export to
+      #    MapIterator         mapIterator = new MapIterator(Map::create(LanguageTable::installedLanguages()));
+      #    ;
+      #    mapIterator.begin();
+      #    while (mapIterator.more())
+      #    {
+      #        languageMap.insert(mapIterator.value(), FormTreeItemStatus::Selected);
+      #        mapIterator.next();
+      #    }
+      #
+      #    languageMap.insert(LanguageTable::defaultLanguage(), FormTreeItemStatus::Selected);
+      #
+      #    xSysLastValue::getLast(element);
+      #
+      #    if (conpeek(lastFiles, 1))
+      #    {
+      #        fileName.text(conpeek(lastFiles, 1));
+      #    }
+      #
+      #    filePath = element.fileNameLookupInitialPath();
+      #    treeNode = lastAotSelection.first();
+      #
+      #    if (!treeNode)
+      #    {
+      #        element.closeCancel();
+      #        return;
+      #    }
+      #
+      #    layer.selection(currentAOLayer());
+      #
+      #    prefix = enum2str(SysTreeNode::path2ApplObjectType(treeNode.treeNodePath()));
+      #    element.updateBox(fileNameNext(strfmt('%1%2_%3%4', filePath, preFix, treeNode.treeNodeName(), #xpo)));
+      #    LanguageTable::buildSelectLanguageTree(languageTree, languageMap);
+      #    layerGrp.enableChilds(labelGrp.enableChilds());
+      #
+      #    super();
+      #    layer.modified();
+      #
+      #}
+    ENDSOURCE
+    SOURCE #sendAsEmail
+      #void sendAsEmail()
+      #{
+      #    Filename    attachment;
+      #    SysINetMail mail;
+      #
+      #    if (email.value())
+      #    {
+      #        attachment = this.getFileName();
+      #        mail = new SysINetMail();
+      #        mail.sendMailAttach('','',strfmt("@SYS85037",attachment), attachment, true, attachment, attachment);
+      #        infolog.globalCache().remove(formstr(SysExportDialog), 0);
+      #    }
+      #}
+    ENDSOURCE
+    SOURCE #setProject
+      #public void setProject(Name _projectName)
+      #{
+      #    projectDefinitonOnlyBox.visible(true);
+      #    this.design().caption(this.design().caption() + ' - ' +  _projectName);
+      #}
+    ENDSOURCE
+    SOURCE #unpack
+      #public boolean unpack(container _packedClass)
+      #{
+      #
+      #    Integer     version     = conpeek(_packedClass,1);
+      #
+      #    switch (version)
+      #    {
+      #        case #CurrentVersion :
+      #            [version, #CurrentList] = _packedClass;
+      #
+      #            if (!WinAPI::showMruAllowed())
+      #            {
+      #                #CurrentList = connull();
+      #            }
+      #
+      #            break;
+      #        default :
+      #            return false;
+      #    }
+      #
+      #    return true;
+      #
+      #}
+    ENDSOURCE
+    SOURCE #updateBox
+      #void updateBox(Filename file, boolean updateBox = true)
+      #{
+      #    int         i;
+      #    boolean     showMruAllowed;
+      #    int         selection = 0;
+      #    Filename    path;
+      #    Filename    name;
+      #    Filename    ext;
+      #
+      #    [path, name, ext] = fileNameSplit(fileNameTrim(file));
+      #
+      #    if (name)
+      #    {
+      #        if (WinAPI::showMruAllowed())
+      #        {
+      #            showMruAllowed = true;
+      #
+      #            while (confind(lastFiles, file))
+      #            {
+      #                lastFiles = condel(lastFiles, confind(lastFiles, file), 1);
+      #            }
+      #
+      #            while (conlen(lastFiles) >= #tempFiles)
+      #            {
+      #                lastFiles = condel(lastFiles, #tempFiles, 1);
+      #            }
+      #        }
+      #        else
+      #        {
+      #            lastFiles = connull();
+      #        }
+      #        lastFiles = conins(lastFiles, 1, file);
+      #
+      #        if (updateBox)
+      #        {
+      #            fileName.clear();
+      #
+      #            if (showMruAllowed)
+      #            {
+      #                fileName.add('');
+      #
+      #                if (file)
+      #                {
+      #                    selection = 1;
+      #                }
+      #            }
+      #
+      #            for (i = 1; i <= conlen(lastFiles); i++)
+      #            {
+      #                if (conpeek(lastFiles, i))
+      #                {
+      #                    fileName.add(conpeek(lastFiles, i));
+      #                }
+      #            }
+      #
+      #            fileName.setDropSize(conlen(lastFiles) + selection);
+      #            fileName.selection(selection);
+      #            fileName.update();
+      #        }
+      #    }
+      #}
+    ENDSOURCE
+  ENDMETHODS
+  OBJECTBANK
+    PROPERTIES
+    ENDPROPERTIES
+    
+  ENDOBJECTBANK
+  
+  REFERENCEDATASOURCES
+  ENDREFERENCEDATASOURCES
+  
+  JOINS
+  ENDJOINS
+  
+  PARTREFERENCES
+  ENDPARTREFERENCES
+  
+  DESIGN
+    PROPERTIES
+      Width               #Column width
+      Caption             #@SYS14863
+      WindowType          #Workspace
+      SaveSize            #No
+      SetCompany          #No
+      Style               #Dialog
+      ViewEditMode        #Edit
+    ENDPROPERTIES
+    
+    CONTAINER
+      CONTROL BUTTONGROUP
+        PROPERTIES
+          Name                #ButtonGroup
+          Left                #Auto (left)
+          ElementPosition     #1431655764
+          HierarchyParent     #DialogCommit
+          Style               #DialogCommitContainer
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL GROUP
+        PROPERTIES
+          Name                #akaVCS
+          AutoDeclaration     #Yes
+          HelpText            #Send to AKA Version Control
+          ElementPosition     #1932735281
+          HierarchyParent     #OptionGrp
+          FrameType           #Edged 3D
+          Caption             #Send to AKA Version Control
+          FrameOptionButton   #Check
+          OptionValue         #0
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL GROUP
+        PROPERTIES
+          Name                #DialogCommit
+          Width               #Column width
+          ElementPosition     #1431655764
+          FrameType           #Thin
+          Style               #DialogCommit
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL GROUP
+        PROPERTIES
+          Name                #ElementGrp
+          Width               #Column width
+          ElementPosition     #1288490187
+          HierarchyParent     #MainGrp
+          FrameType           #None
+          Columns             #2
+          ArrangeGuide        
+            ARRAY INDEX Columns 
+              #0
+              #0
+            ENDARRAY
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL GROUP
+        PROPERTIES
+          Name                #FileGrp
+          Width               #Column width
+          ElementPosition     #858993458
+          HierarchyParent     #MainGrp
+          FrameType           #None
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL GROUP
+        PROPERTIES
+          Name                #LabelGrp
+          AutoDeclaration     #Yes
+          Width               #Column width
+          Height              #Column height
+          HelpText            #@SYS69899
+          ElementPosition     #1717986916
+          HierarchyParent     #MainGrp
+          FrameType           #Edged 3D Line
+          Caption             #@SYS69898
+          FrameOptionButton   #Check
+          OptionValue         #0
+          HideIfEmpty         #No
+        ENDPROPERTIES
+        
+        METHODS
+          SOURCE #clicked
+            #public void clicked()
+            #{
+            #    boolean newValue = !this.enableChilds();
+            #
+            #    super();
+            #
+            #    element.lock();
+            #    languageTree.visible(newValue);
+            #    languageText.visible(newValue);
+            #
+            #    if (newValue)
+            #    {
+            #        labelGrp.frameType(FormFrameType::Edged3D);
+            #    }
+            #    else
+            #    {
+            #        labelGrp.frameType(FormFrameType::Edged3DLine);
+            #    }
+            #
+            #    element.resetSize();
+            #    element.arrange();
+            #    element.unLock();
+            #}
+          ENDSOURCE
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL GROUP
+        PROPERTIES
+          Name                #LayerGrp
+          AutoDeclaration     #Yes
+          Width               #Column width
+          HelpText            #@SYS69897
+          ElementPosition     #1717986916
+          HierarchyParent     #OptionGrp
+          FrameType           #Edged 3D
+          Caption             #@SYS26367
+          FrameOptionButton   #Check
+          OptionValue         #0
+          Columns             #2
+          ArrangeGuide        
+            ARRAY INDEX Columns 
+              #0
+              #0
+            ENDARRAY
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL GROUP
+        PROPERTIES
+          Name                #MainGrp
+          Width               #Column width
+          Height              #Column height
+          ElementPosition     #715827882
+          Style               #DialogContent
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL GROUP
+        PROPERTIES
+          Name                #OptionGrp
+          Width               #Column width
+          Height              #Column height
+          ElementPosition     #1431655764
+          HierarchyParent     #ElementGrp
+          FrameType           #Edged 3D
+          Caption             #@SYS22622
+          Columns             #2
+          ArrangeGuide        
+            ARRAY INDEX Columns 
+              #0
+              #0
+            ENDARRAY
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL BUTTON
+        PROPERTIES
+          Name                #Browse
+          Left                #Right edge
+          HelpText            #@SYS74496
+          ElementPosition     #1610612733
+          HierarchyParent     #FileGrp
+          Text                #@SYS28927
+        ENDPROPERTIES
+        
+        METHODS
+          SOURCE #clicked
+            #void clicked()
+            #{
+            #    #File
+            #    #define.OFN_PATHMUSTEXIST(0x00000800)
+            #
+            #    Filename file;
+            #    Filename path;
+            #    Filename name;
+            #    Filename ext;
+            #
+            #
+            #    super();
+            #
+            #
+            #    file = WinAPI::getSaveFileName(element.hWnd(),
+            #                                   element.filenameLookupFilter(),
+            #                                   element.filenameLookupInitialPath(),
+            #                                   element.filenameLookupTitle(),
+            #                                   '',
+            #                                   element.filenameLookupFileName(),
+            #                                   0);
+            #
+            #    [path, name, ext] = fileNameSplit(file);
+            #
+            #    if (!ext)
+            #    {
+            #        ext = #xpo;
+            #    }
+            #
+            #    file = path + name + ext;
+            #
+            #    if (name &&
+            #        file != fileName.getEditText())
+            #    {
+            #        element.updateBox(file);
+            #    }
+            #
+            #}
+          ENDSOURCE
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL CHECKBOX
+        PROPERTIES
+          Name                #Email
+          AutoDeclaration     #Yes
+          HelpText            #@SYS84424
+          ElementPosition     #858993458
+          HierarchyParent     #OptionGrp
+          Label               #@SYS75282
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL CHECKBOX
+        PROPERTIES
+          Name                #ProjectDefinitonOnlyBox
+          AutoDeclaration     #Yes
+          Visible             #No
+          HelpText            #@SYS73286
+          ElementPosition     #1288490187
+          HierarchyParent     #OptionGrp
+          Label               #@SYS73287
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL COMBOBOX
+        PROPERTIES
+          Name                #FileName
+          AutoDeclaration     #Yes
+          Width               #Column width
+          AlignControl        #No
+          HelpText            #@SYS21196
+          ElementPosition     #1073741822
+          HierarchyParent     #FileGrp
+          DisplayLength       #50
+          Label               #@SYS16423
+          AppendNew           #Yes
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL COMBOBOX
+        PROPERTIES
+          Name                #Layer
+          AutoDeclaration     #Yes
+          HelpText            #@SYS55693
+          ElementPosition     #1431655764
+          HierarchyParent     #LayerGrp
+          Label               #@SYS26367
+          EnumType            #UtilEntryLevel
+        ENDPROPERTIES
+        
+        METHODS
+          SOURCE #toolTip
+            #str toolTip()
+            #{
+            #    str ret;
+            #
+            #    ret = "@SYS55693";
+            #
+            #    return ret;
+            #}
+          ENDSOURCE
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL COMMANDBUTTON
+        PROPERTIES
+          Name                #Cancel
+          ElementPosition     #1610612733
+          HierarchyParent     #ButtonGroup
+          Command             #264
+        ENDPROPERTIES
+        
+        METHODS
+          SOURCE #clicked
+            #void clicked()
+            #{
+            #    exportFlag = #noExport;
+            #    super();
+            #}
+          ENDSOURCE
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL COMMANDBUTTON
+        PROPERTIES
+          Name                #Export
+          ElementPosition     #1073741822
+          HierarchyParent     #ButtonGroup
+          Text                #@SYS5469
+          DefaultButton       #Yes
+          Command             #263
+        ENDPROPERTIES
+        
+        METHODS
+          SOURCE #clicked
+            #void clicked()
+            #{
+            #    element.export();
+            #    super();
+            #}
+          ENDSOURCE
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL STATICTEXT
+        PROPERTIES
+          Name                #LanguageText
+          AutoDeclaration     #Yes
+          Visible             #No
+          AllowEdit           #No
+          ElementPosition     #1073741822
+          HierarchyParent     #LabelGrp
+          Text                #@SYS15819
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL STRINGEDIT
+        PROPERTIES
+          Name                #akaCommitMsg
+          AutoDeclaration     #Yes
+          Width               #300
+          Height              #60
+          ElementPosition     #1431655764
+          HierarchyParent     #akaVCS
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL TREE
+        PROPERTIES
+          Name                #LanguageTree
+          Visible             #No
+          Width               #Column width
+          Height              #Column height
+          ElementPosition     #1610612733
+          HierarchyParent     #LabelGrp
+          LinesAtRoot         #No
+        ENDPROPERTIES
+        
+        METHODS
+          SOURCE #expanding
+            #boolean expanding(int idx, FormTreeExpand action, anytype data)
+            #{
+            #    boolean ret;
+            #    ;
+            #    if (action == FormTreeExpand::Expand)
+            #    {
+            #        ret = super(idx, action, data);
+            #    }
+            #    return ret;
+            #}
+          ENDSOURCE
+          SOURCE #mouseDblClick
+            #int mouseDblClick(int x, int y, int button, boolean ctrl, boolean shift)
+            #{
+            #    int             ret;
+            #    int             idx;
+            #    int             focus;
+            #    FormTreeItem    formTreeItem;
+            #
+            #    ret = super(x, y, button, ctrl, shift);
+            #
+            #    [idx, focus] = this.hitTest(x, y);
+            #
+            #    if (focus & #FOCUS_FIELD && this.getItem(idx))
+            #    {
+            #        formTreeItem = this.getItem(idx);
+            #
+            #        element.mouseClick(formTreeItem);
+            #    }
+            #
+            #    return ret;
+            #}
+          ENDSOURCE
+          SOURCE #mouseDown
+            #int mouseDown(int x, int y, int button, boolean ctrl, boolean shift)
+            #{
+            #    int             ret;
+            #    int             focus;
+            #    TreeItemIdx     idx;
+            #    FormTreeItem    formTreeItem;
+            #
+            #    ret = super(x, y, button, ctrl, shift);
+            #
+            #    [idx, focus] = this.hitTest(x, y);
+            #
+            #    if (focus & #FLCHT_TOLEFT && this.getItem(idx))
+            #    {
+            #        formTreeItem = this.getItem(idx);
+            #
+            #        element.mouseClick(formTreeItem);
+            #    }
+            #
+            #    return ret;
+            #}
+          ENDSOURCE
+        ENDMETHODS
+      ENDCONTROL 
+      
+    ENDCONTAINER
+    
+  ENDDESIGN
+  
+  PERMISSIONS #Permissions
+    PROPERTIES
+    ENDPROPERTIES
+    
+    PERMISSIONSET #Read
+      PROPERTIES
+      ENDPROPERTIES
+      
+      FORM #Controls
+      ENDFORM
+      
+    TABLES #Tables
+    ENDTABLES
+    
+  SERVERMETHODS #Server Methods
+  ENDSERVERMETHODS
+  
+ASSOCIATEDFORMS #Associated Forms
+ENDASSOCIATEDFORMS
+
+ENDPERMISSIONSET
+
+PERMISSIONSET #Update
+  PROPERTIES
+  ENDPROPERTIES
+  
+  FORM #Controls
+  ENDFORM
+  
+TABLES #Tables
+ENDTABLES
+
+SERVERMETHODS #Server Methods
+ENDSERVERMETHODS
+
+ASSOCIATEDFORMS #Associated Forms
+ENDASSOCIATEDFORMS
+
+ENDPERMISSIONSET
+
+PERMISSIONSET #Create
+  PROPERTIES
+  ENDPROPERTIES
+  
+  FORM #Controls
+  ENDFORM
+  
+TABLES #Tables
+ENDTABLES
+
+SERVERMETHODS #Server Methods
+ENDSERVERMETHODS
+
+ASSOCIATEDFORMS #Associated Forms
+ENDASSOCIATEDFORMS
+
+ENDPERMISSIONSET
+
+PERMISSIONSET #Delete
+  PROPERTIES
+  ENDPROPERTIES
+  
+  FORM #Controls
+  ENDFORM
+  
+TABLES #Tables
+ENDTABLES
+
+SERVERMETHODS #Server Methods
+ENDSERVERMETHODS
+
+ASSOCIATEDFORMS #Associated Forms
+ENDASSOCIATEDFORMS
+
+ENDPERMISSIONSET
+
+ENDPERMISSIONS
+
+ENDFORM
+
+
+***Element: FRM
+
+; Microsoft Dynamics AX Forms unloaded
+; --------------------------------------------------------------------------------
+FRMVERSION 12
+
+FORM #AKAParms
+  PROPERTIES
+    Name                #AKAParms
+    Origin              #{1E37BD18-3F32-415A-B832-9D6A0D9C0102}
+  ENDPROPERTIES
+  
+  METHODS
+    SOURCE #classDeclaration
+      #public class FormRun extends ObjectRun
+      #{
+      #}
+    ENDSOURCE
+  ENDMETHODS
+  OBJECTBANK
+    PROPERTIES
+    ENDPROPERTIES
+    
+    DATASOURCE
+      OBJECTPOOL
+        PROPERTIES
+          Name                #akaParms
+          Table               #akaParms
+        ENDPROPERTIES
+        
+        FIELDLIST
+        ENDFIELDLIST
+      ENDOBJECTPOOL
+      METHODS
+      ENDMETHODS
+    ENDDATASOURCE
+  ENDOBJECTBANK
+  
+  REFERENCEDATASOURCES
+  ENDREFERENCEDATASOURCES
+  
+  JOINS
+  ENDJOINS
+  
+  PARTREFERENCES
+  ENDPARTREFERENCES
+  
+  DESIGN
+    PROPERTIES
+      Style               #SimpleListDetails
+    ENDPROPERTIES
+    
+    CONTAINER
+      CONTROL GROUP
+        PROPERTIES
+          Name                #Parameters
+          ElementPosition     #1431655764
+          HierarchyParent     #TabPage
+          DataSource          #akaParms
+          DataGroup           #Parameters
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL TAB
+        PROPERTIES
+          Name                #Tab
+          ElementPosition     #1073741823
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL TABPAGE
+        PROPERTIES
+          Name                #TabPage
+          ElementPosition     #1431655764
+          HierarchyParent     #Tab
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL STRINGEDIT
+        PROPERTIES
+          Name                #Parameters_MailPasswd
+          ElementPosition     #1861152493
+          HierarchyParent     #Parameters
+          PasswordStyle       #Yes
+          DataSource          #akaParms
+          DataField           #MailPasswd
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL STRINGEDIT
+        PROPERTIES
+          Name                #Parameters_MailServer
+          ElementPosition     #858993458
+          HierarchyParent     #Parameters
+          DataSource          #akaParms
+          DataField           #MailServer
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL STRINGEDIT
+        PROPERTIES
+          Name                #Parameters_MailUser
+          ElementPosition     #1288490187
+          HierarchyParent     #Parameters
+          DataSource          #akaParms
+          DataField           #MailUser
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+      CONTROL STRINGEDIT
+        PROPERTIES
+          Name                #Parameters_vcsEmail
+          ElementPosition     #1574821340
+          HierarchyParent     #Parameters
+          DataSource          #akaParms
+          DataField           #vcsEmail
+        ENDPROPERTIES
+        
+        METHODS
+        ENDMETHODS
+      ENDCONTROL 
+      
+    ENDCONTAINER
+    
+  ENDDESIGN
+  
+  PERMISSIONS #Permissions
+    PROPERTIES
+    ENDPROPERTIES
+    
+    PERMISSIONSET #Read
+      PROPERTIES
+      ENDPROPERTIES
+      
+      FORM #Controls
+      ENDFORM
+      
+    TABLES #Tables
+    ENDTABLES
+    
+  SERVERMETHODS #Server Methods
+  ENDSERVERMETHODS
+  
+ASSOCIATEDFORMS #Associated Forms
+ENDASSOCIATEDFORMS
+
+ENDPERMISSIONSET
+
+PERMISSIONSET #Update
+  PROPERTIES
+  ENDPROPERTIES
+  
+  FORM #Controls
+  ENDFORM
+  
+TABLES #Tables
+ENDTABLES
+
+SERVERMETHODS #Server Methods
+ENDSERVERMETHODS
+
+ASSOCIATEDFORMS #Associated Forms
+ENDASSOCIATEDFORMS
+
+ENDPERMISSIONSET
+
+PERMISSIONSET #Create
+  PROPERTIES
+  ENDPROPERTIES
+  
+  FORM #Controls
+  ENDFORM
+  
+TABLES #Tables
+ENDTABLES
+
+SERVERMETHODS #Server Methods
+ENDSERVERMETHODS
+
+ASSOCIATEDFORMS #Associated Forms
+ENDASSOCIATEDFORMS
+
+ENDPERMISSIONSET
+
+PERMISSIONSET #Delete
+  PROPERTIES
+  ENDPROPERTIES
+  
+  FORM #Controls
+  ENDFORM
+  
+TABLES #Tables
+ENDTABLES
+
+SERVERMETHODS #Server Methods
+ENDSERVERMETHODS
+
+ASSOCIATEDFORMS #Associated Forms
+ENDASSOCIATEDFORMS
+
+ENDPERMISSIONSET
+
+ENDPERMISSIONS
+
+ENDFORM
+
+
+***Element: UTS
+
+; Microsoft Dynamics AX String: akaVcsEmail unloaded
+; --------------------------------------------------------------------------------
+  USERTYPEVERSION 6
+  
+  USERTYPE #akaVcsEmail
+  STRING
+    PROPERTIES
+      Name                #akaVcsEmail
+      Label               #VCS Email Addresss
+      ButtonImage         #Mail
+      Origin              #{5558A7D2-ED99-472F-896A-4CA98BD2DF14}
+      Extends             #Email
+      StringSize          #80
+    ENDPROPERTIES
+    
+    TYPEELEMENTS
+    ENDTYPEELEMENTS
+    
+    TYPEREFERENCES
+    ENDTYPEREFERENCES
+    
+    TYPELOOKUPS
+    ENDTYPELOOKUPS
+    
+  ENDUSERTYPE
+  
+
+***Element: UTS
+
+; Microsoft Dynamics AX String: akaMailPasswd unloaded
+; --------------------------------------------------------------------------------
+  USERTYPEVERSION 6
+  
+  USERTYPE #akaMailPasswd
+  STRING
+    PROPERTIES
+      Name                #akaMailPasswd
+      Origin              #{4F998430-6D4B-43D0-B0A5-9BC548AD97C8}
+      Extends             #Password
+      StringSize          #20
+    ENDPROPERTIES
+    
+    TYPEELEMENTS
+    ENDTYPEELEMENTS
+    
+    TYPEREFERENCES
+    ENDTYPEREFERENCES
+    
+    TYPELOOKUPS
+    ENDTYPELOOKUPS
+    
+  ENDUSERTYPE
+  
+
+***Element: UTS
+
+; Microsoft Dynamics AX String: akaMailUser unloaded
+; --------------------------------------------------------------------------------
+  USERTYPEVERSION 6
+  
+  USERTYPE #akaMailUser
+  STRING
+    PROPERTIES
+      Name                #akaMailUser
+      Label               #User Name
+      Origin              #{0F563F5C-247D-4571-A7FF-781420C1E85A}
+      Extends             #UserName
+      StringSize          #60
+    ENDPROPERTIES
+    
+    TYPEELEMENTS
+    ENDTYPEELEMENTS
+    
+    TYPEREFERENCES
+    ENDTYPEREFERENCES
+    
+    TYPELOOKUPS
+    ENDTYPELOOKUPS
+    
+  ENDUSERTYPE
+  
+
+***Element: UTS
+
+; Microsoft Dynamics AX String: akaMailServer unloaded
+; --------------------------------------------------------------------------------
+  USERTYPEVERSION 6
+  
+  USERTYPE #akaMailServer
+  STRING
+    PROPERTIES
+      Name                #akaMailServer
+      Origin              #{959B8116-F3F6-4E44-BDE2-3ED7E2055440}
+      Extends             #ServerName
+      StringSize          #80
+    ENDPROPERTIES
+    
+    TYPEELEMENTS
+    ENDTYPEELEMENTS
+    
+    TYPEREFERENCES
+    ENDTYPEREFERENCES
+    
+    TYPELOOKUPS
+    ENDTYPELOOKUPS
+    
+  ENDUSERTYPE
+  
+
+***Element: DBT
+
+; Microsoft Dynamics AX Table : akaParms unloaded
+; --------------------------------------------------------------------------------
+  TABLEVERSION 1
+  
+  TABLE #akaParms
+    EnforceFKRelation 1
+    PROPERTIES
+      Name                #akaParms
+      CreateRecIdIndex    #Yes
+      PrimaryIndex        #SurrogateKey
+      ClusterIndex        #SurrogateKey
+      Origin              #{1D4AB3D9-0552-4D91-A2D7-C3D8EE9B1842}
+    ENDPROPERTIES
+    
+    FIELDS
+      FIELD #Key
+        INT
+        PROPERTIES
+          Name                #Key
+          Table               #akaParms
+          Origin              #{97F56618-EF06-483F-A783-DF7773208938}
+          ExtendedDataType    #ParametersKey
+        ENDPROPERTIES
+        
+      FIELD #MailPasswd
+        STRING
+        PROPERTIES
+          Name                #MailPasswd
+          Table               #akaParms
+          Origin              #{12806DCC-EAFE-456C-9B6E-9D68C4491DC6}
+          ExtendedDataType    #akaMailPasswd
+          StringSize          #20
+        ENDPROPERTIES
+        
+      FIELD #MailServer
+        STRING
+        PROPERTIES
+          Name                #MailServer
+          Table               #akaParms
+          Origin              #{29CA7F00-A268-4023-B135-081853BF4733}
+          ExtendedDataType    #akaMailServer
+          StringSize          #80
+        ENDPROPERTIES
+        
+      FIELD #MailUser
+        STRING
+        PROPERTIES
+          Name                #MailUser
+          Table               #akaParms
+          Origin              #{EF2F0C0E-1508-440F-8650-43A3CAF80B62}
+          ExtendedDataType    #akaMailUser
+          StringSize          #60
+        ENDPROPERTIES
+        
+      FIELD #vcsEmail
+        STRING
+        PROPERTIES
+          Name                #vcsEmail
+          Table               #akaParms
+          Origin              #{B5B5737B-BFF3-4612-AF21-C7F442A966C8}
+          ExtendedDataType    #akaVcsEmail
+          StringSize          #80
+        ENDPROPERTIES
+        
+    ENDFIELDS
+    GROUPS
+      GROUP #Parameters
+        PROPERTIES
+          Name                #Parameters
+          Label               #AKA Parameters
+        ENDPROPERTIES
+        
+        GROUPFIELDS
+          #MailPasswd
+          #MailServer
+          #MailUser
+          #vcsEmail
+        ENDGROUPFIELDS
+      ENDGROUP
+    ENDGROUPS
+    
+    INDICES
+      #Key
+      PROPERTIES
+        Name                #Key
+        AllowDuplicates     #No
+        Origin              #{3D0C8E92-BCCB-4C8C-BA0A-A8085650FA02}
+      ENDPROPERTIES
+      
+      INDEXFIELDS
+        #Key
+      ENDINDEXFIELDS
+      
+    ENDINDICES
+    FULLTEXTINDICES
+    ENDFULLTEXTINDICES
+    REFERENCES
+    ENDREFERENCES
+    
+    DELETEACTIONS
+    ENDDELETEACTIONS
+    
+    METHODS
+      SOURCE #find
+        #/*
+        #    AOSRunMode::Called
+        #*/
+        #static akaParms find(boolean _forupdate = false)
+        #{
+        #    akaParms  parameter;
+        #
+        #    parameter.selectForUpdate(_forupdate);
+        #
+        #    select firstonly parameter
+        #        index Key
+        #        where parameter.Key == 0;
+        #
+        #    if (!parameter && !parameter.isTmp())
+        #    {
+        #        Company::createParameter(parameter);
+        #        PriceDiscPurchPolicyParameters::initParameters();
+        #    }
+        #
+        #    return parameter;
+        #}
+      ENDSOURCE
+    ENDMETHODS
+  ENDTABLE
+  
+
+***Element: JOB
+
+; Microsoft Dynamics AX Job: rt unloaded
+; --------------------------------------------------------------------------------
+  JOBVERSION 1
+  
+  SOURCE #rt
+    #static void rt(Args _args)
+    #{
+    #    info(date2str(systemDateGet(), 213,2,4,3,4,4));
+    #}
+  ENDSOURCE
+  PROPERTIES
+    Origin              #{83C55E9F-6098-4860-B00D-16424434A76D}
+  ENDPROPERTIES
+  
+
+***Element: JOB
+
+; Microsoft Dynamics AX Job: akaSendEmail unloaded
+; --------------------------------------------------------------------------------
+  JOBVERSION 1
+  
+  SOURCE #akaSendEmail
+    #static void akaSendEmail(Args _args)
+    #{
+    #    // 27-Jul-2013 - RvB - voorTech@gmail.com
+    #     //>> Email through SMPT setup 19-Oct-11 RvB
+    #    System.Net.Mail.MailMessage             mailMessage                 ;
+    #    System.Net.Mail.Attachment              attachment                  ;
+    #    System.Net.Mail.AttachmentCollection    attachementCollection       ;
+    #    System.Net.Mail.SmtpClient              mailClient                  ;
+    #    System.Net.Mail.MailAddress             mailFrom                    ;
+    #    System.Net.Mail.MailAddress             mailTo                      ;
+    #    System.Net.NetworkCredential            networkCredential           ;
+    #
+    #    SysEmailParameters                      sysEmailParameters          ;
+    #    SMTPUserName                            smtpUser                    ;
+    #  //cryptoblob                              password                    ;
+    #    akaMailPasswd                           password                    ;
+    #    SMTPPortNumber                          portNumber                  ;
+    #    SMTPServerIpAddress                     localMachine                ;
+    #    CLRObject                               netException                ;
+    #    AOSId                                   AOSId                       ;
+    #    AOSInstanceId                           AOSInstanceId               ;
+    #
+    #    str                                     userMailAddress             ;
+    #    str                                     receiverMailAddress         ;
+    #    str                                     mailBody                    ;
+    #    str                                     smtpServer                  ;
+    #    fileNameOpen                            fileNameForEmail            ;
+    #    fileNameOpen                            sourceFileName              ;
+    #    str                                     tmpName                     ;
+    #    FileIOPermission                        perm                        ;
+    #    userinfo                                userInfo                    ;
+    #    str                                     fileName = 'axaptareport'   ;
+    #    InteropPermission                       permission                  ;
+    #    Str                                     tmpStr                      ;
+    #    str                                     _sourceFile                 ;
+    #    akaParms                                akaParms                    ;
+    #    ;
+    #
+    #    sourceFileName  = _sourceFile;
+    #    sourceFileName  = "C:\\DEV\\TestFile.txt" ; //DEBUG Should be passed in
+    #    akaParms        = akaParms::find();
+    #
+    #  //fileNameforEmail    = winApi::getTempPath() + sourceFileName                    ; // store attachment in a temp location
+    #    fileNameForEmail    = "C:\\DEV\\TestFile1.txt" ; //TODO: get double backslash in output of previous command
+    #    perm                = new FileIOPermission(fileNameforEmail,'w')                ;
+    #
+    #    if(!perm)
+    #    {
+    #        throw error(StrFmt("Cannot move attachment to temp location %1.", fileNameForEmail));
+    #    }
+    #    try
+    #    {
+    #        perm.assert();
+    #    }
+    #    catch
+    #    {
+    #        throw error(StrFmt("Cannot gain access to Temp location %1.", fileNameForEmail));
+    #    }
+    #
+    #    try
+    #    {
+    #        //move attachment file to Temp folder
+    #        winapi::moveFile(sourceFileName , fileNameforEmail);
+    #    }
+    #    catch(Exception::CLRError)
+    #    {
+    #        throw error(strFmt("Error moving file: %1", AifUtil::getClrErrorMessage()));
+    #    }
+    #        CodeAccessPermission::revertAssert();
+    #
+    #    userMailAddress         = SysUserInfo::find().Email                                 ; // find current users email address setup up in user options
+    #    //sysEmailParameters      = SysEmailParameters::find()                                ;
+    #    smtpServer              = akaParms.MailServer                                       ;
+    #    portNumber              = 25                                                        ;
+    #    smtpUser                = akaParms.MailUser                                         ;
+    #  //localMachine            = sysEmailParameters.SMTPServerIPAddress                    ;
+    #    //[AOSId, AOSInstanceId]  = SysEmailSMTPPassword::currentAOSInstance()                ;
+    #    //password                = SysEmailSMTPPassword::find(AOSId, AOSInstanceId).Password ;
+    #    password                = akaParms.MailPasswd                                       ;
+    #
+    #    if (userMailAddress == "")
+    #    {
+    #        throw Error("Send mail: Email address not specified in User Options.");
+    #    }
+    #    if (smtpServer == "")
+    #    {
+    #        throw Error("Send mail: SMTP server not specified in AX Email Parameters.");
+    #    }
+    #    if (portNumber == 0 )
+    #    {
+    #        throw Error("Send mail: SMTP portNumber not specified in AX Email Parameters.");
+    #    }
+    #    if (smtpUser == "")
+    #    {
+    #        throw Error("Send mail: SMTP user name not specified in AX Email Parameters.");
+    #    }
+    #
+    #    select firstonly name from userInfo where userInfo.id == SysuserInfo::find().Id             ;   // to find the user name
+    #    receiverMailAddress     = "voorTech@Gmail.com"                                              ;   // TODO: Determine if we hardcode the AKA email addy or not
+    #    mailFrom                = new System.Net.Mail.MailAddress(userMailAddress,userInfo.name)    ;
+    #    mailTo                  = new System.Net.Mail.MailAddress(receiverMailAddress,"")           ;
+    #    mailBody                = "XPO"                                                             ;   // TODO: fine tune. Dev project name ? Custom commit message?
+    #
+    #    mailMessage             = new System.Net.Mail.MailMessage(mailFrom,mailTo)                  ;
+    #    mailmessage.set_Subject("AKA CODE");
+    #    mailmessage.set_Body(mailBody);
+    #
+    #    permission = new InteropPermission(InteropKind::ClrInterop);
+    #    permission.assert();
+    #
+    #    attachementCollection   = mailMessage.get_Attachments();
+    #    attachment              = new System.Net.Mail.Attachment(fileNameforEmail);
+    #    attachementCollection.Add(attachment);
+    #
+    #    mailClient              = new System.Net.Mail.SmtpClient(smtpServer, portNumber);
+    #  //tmpStr                  = Global::cryptoblob2str(WinAPIServer::cryptUnProtectData(password)) ;
+    #    tmpStr                  = password ;                                                            // TODO: Encrypt
+    #    networkCredential       = new System.Net.NetworkCredential(smtpUser, tmpStr) ;
+    #    mailClient.set_UseDefaultCredentials(False);
+    #    mailClient.set_Credentials(networkCredential);
+    #  //mailClient.set_Host(smtpServer);
+    #
+    #    try
+    #    {
+    #        mailClient.Send(mailmessage);
+    #    }
+    #    catch(Exception::CLRError)
+    #    {
+    #        Warning("CLRError Problem sending email.");
+    #        netException = CLRInterop::getLastException();
+    #        info(netException.ToString());
+    #    }
+    #    catch(Exception::CodeAccessSecurity)
+    #    {
+    #        Warning("CodeAccessSecurity Problem sending email.");
+    #    }
+    #    catch(Exception::Error)
+    #    {
+    #        Warning("Problem sending email.");
+    #    }
+    #
+    #    mailmessage.Dispose();
+    #    attachment.Dispose();
+    #    winApi::deleteFile(fileNameforEmail); // delete temp file
+    #    CodeAccessPermission::revertAssert();
+    #
+    #    info("Done");
+    #}
+    #
+  ENDSOURCE
+  PROPERTIES
+    Origin              #{C01F6CD3-099B-4B79-B4D7-C6B2802942CF}
+  ENDPROPERTIES
+  
+
+***Element: PRN
+
+; Microsoft Dynamics AX Project : aka_VCS unloaded
+; --------------------------------------------------------------------------------
+  PROJECTVERSION 2
+  
+  PROJECT #aka_VCS
+  SHARED
+  PROPERTIES
+    Name                #aka_VCS
+    Origin              #{E08FB7AF-797E-442F-94DD-7D56811B30B6}
+  ENDPROPERTIES
+  
+    PROJECTCLASS ProjectNode
+    GROUP #Classes
+      PROPERTIES
+        Name                #Classes
+        ProjectGroupType    #Classes
+        GroupMask           #
+        PreventEditProperties #No
+      ENDPROPERTIES
+      
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 45
+        UTILOBJECTID 1023823
+        NODETYPE 329
+        NAME #akaUtil
+      ENDNODE
+      ENDGROUP
+      
+    GROUP #Forms
+      PROPERTIES
+        Name                #Forms
+        ProjectGroupType    #Forms
+        GroupMask           #
+        PreventEditProperties #No
+      ENDPROPERTIES
+      
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 11
+        UTILOBJECTID 0
+        NODETYPE 201
+        NAME #SysExportDialog
+      ENDNODE
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 11
+        UTILOBJECTID 0
+        NODETYPE 201
+        NAME #AKAParms
+      ENDNODE
+      ENDGROUP
+      
+    GROUP #DataDictionary
+      PROPERTIES
+        Name                #DataDictionary
+        ProjectGroupType    #DataDictionary
+        GroupMask           #
+        PreventEditProperties #No
+      ENDPROPERTIES
+      
+      GROUP #ExtendedDataTypes
+        PROPERTIES
+          Name                #ExtendedDataTypes
+          ProjectGroupType    #ExtendedDataTypes
+          GroupMask           #
+          PreventEditProperties #No
+        ENDPROPERTIES
+        
+        BEGINNODE
+          FILETYPE 0
+          UTILTYPE 41
+          UTILOBJECTID 102081
+          NODETYPE 234
+          NAME #akaVcsEmail
+        ENDNODE
+        BEGINNODE
+          FILETYPE 0
+          UTILTYPE 41
+          UTILOBJECTID 102078
+          NODETYPE 234
+          NAME #akaMailPasswd
+        ENDNODE
+        BEGINNODE
+          FILETYPE 0
+          UTILTYPE 41
+          UTILOBJECTID 102080
+          NODETYPE 234
+          NAME #akaMailUser
+        ENDNODE
+        BEGINNODE
+          FILETYPE 0
+          UTILTYPE 41
+          UTILOBJECTID 102079
+          NODETYPE 234
+          NAME #akaMailServer
+        ENDNODE
+        ENDGROUP
+        
+      GROUP #Tables
+        PROPERTIES
+          Name                #Tables
+          ProjectGroupType    #Tables
+          GroupMask           #
+          PreventEditProperties #No
+        ENDPROPERTIES
+        
+        BEGINNODE
+          FILETYPE 0
+          UTILTYPE 44
+          UTILOBJECTID 101979
+          NODETYPE 204
+          NAME #akaParms
+        ENDNODE
+        ENDGROUP
+        
+      ENDGROUP
+      
+    GROUP #Jobs
+      PROPERTIES
+        Name                #Jobs
+        ProjectGroupType    #Jobs
+        GroupMask           #
+        PreventEditProperties #No
+      ENDPROPERTIES
+      
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 5
+        UTILOBJECTID 0
+        NODETYPE 215
+        NAME #rt
+      ENDNODE
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 5
+        UTILOBJECTID 0
+        NODETYPE 215
+        NAME #akaSendEmail
+      ENDNODE
+      ENDGROUP
+      
+  ENDPROJECT
+  
+
+***Element: END
