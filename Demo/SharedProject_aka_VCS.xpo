@@ -75,6 +75,7 @@ Formatversion: 1
         #public static void SendEmail(str _sourceFile, str _commitFileName)
         #{
         #    // 27-Jul-2013 - RvB - voorTech@gmail.com
+        #
         #    System.Net.Mail.MailMessage             mailMessage                 ;
         #    System.Net.Mail.Attachment              attachment                  ;
         #    System.Net.Mail.AttachmentCollection    attachementCollection       ;
