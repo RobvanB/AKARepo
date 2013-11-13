@@ -18,6 +18,7 @@ Formatversion: 1
         #class akaUtil
         #{
         #    // 01-Aug-2013 - RvB - voorTech@gmail.com
+        #
         #}
       ENDSOURCE
       SOURCE #saveCommitMsg
